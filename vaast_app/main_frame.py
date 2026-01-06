@@ -1,11 +1,12 @@
 """Main frame region"""
 
 from logging import getLogger
+from os import environ
 from pathlib import Path
 from string import punctuation
 
 import dash_bootstrap_components as dbc
-from dash import ALL, ClientsideFunction, Input, Output, State, dcc, html
+from dash import ALL, ClientsideFunction, Input, Output, State, ctx, dcc, html
 from dash.development.base_component import Component
 
 from vaast_app.chatbot_region import ChatbotRegion
@@ -97,6 +98,21 @@ class MainFrame(Render):
             prevent_initial_call=True,
         )
 
+        self.app.callback(
+            Output("settings-modal", "is_open"),
+            Output("tree-loading", "children", allow_duplicate=True),  # Dummy output
+            Input("settings-save-btn", "n_clicks"),
+            Input("settings-cancel-btn", "n_clicks"),
+            Input("settings-open-btn", "n_clicks"),
+            State("settings-modal", "is_open"),
+            State("settings-version", "value"),
+            State("settings-hosting", "value"),
+            State("settings-model", "value"),
+            State("settings-anthropic-key", "value"),
+            State("settings-openai-key", "value"),
+            prevent_initial_call=True,
+        )(self._update_settings)
+
     def _set_layout(self) -> Component:
         return dbc.Container(
             [
@@ -115,6 +131,60 @@ class MainFrame(Render):
                     is_open=False,
                     size="sm",
                 ),
+                dbc.Modal(
+                    [
+                        dbc.ModalHeader("Settings"),
+                        dbc.ModalBody(
+                            [
+                                html.Label("Version"),
+                                dbc.Select(
+                                    id="settings-version",
+                                    options=[
+                                        {"label": "OpenAI", "value": "OpenAI"},
+                                        {"label": "Anthropic", "value": "Anthropic"},
+                                    ],
+                                    placeholder="Select Version",
+                                    value=environ.get("VERSION"),
+                                ),
+                                html.Label("Hosting Location"),
+                                dbc.Select(
+                                    id="settings-hosting",
+                                    options=[
+                                        {"label": "API", "value": "API"},
+                                        {"label": "CBORG", "value": "CBORG"},
+                                    ],
+                                    placeholder="Select Hosting Location",
+                                    value=environ.get("HOSTING_LOCATION"),
+                                ),
+                                html.Label("Model"),
+                                dbc.Input(id="settings-model", placeholder="Model Name", value=environ.get("MODEL")),
+                                html.Label("Anthropic API Key"),
+                                dbc.Input(
+                                    id="settings-anthropic-key",
+                                    type="password",
+                                    placeholder="Anthropic API Key",
+                                    value=environ.get("ANTHROPIC_API_KEY"),
+                                ),
+                                html.Label("OpenAI API Key"),
+                                dbc.Input(
+                                    id="settings-openai-key",
+                                    type="password",
+                                    placeholder="OpenAI API Key",
+                                    value=environ.get("OPENAI_API_KEY"),
+                                ),
+                            ]
+                        ),
+                        dbc.ModalFooter(
+                            [
+                                dbc.Button("Save", id="settings-save-btn", color="primary"),
+                                dbc.Button("Cancel", id="settings-cancel-btn", className="ms-auto"),
+                            ]
+                        ),
+                    ],
+                    id="settings-modal",
+                    is_open=False,
+                    size="lg",
+                ),
                 ModalRegion(self)(),
                 dbc.Row(
                     [
@@ -130,8 +200,15 @@ class MainFrame(Render):
                                 ),
                             ],
                         ),
+                        dbc.Col(
+                            [
+                                dbc.Button("Settings", id="settings-open-btn", color="secondary", className="me-2"),
+                            ],
+                            width="auto",
+                            className="d-flex align-items-center",
+                        ),
                     ],
-                    class_name="d-flex",
+                    class_name="d-flex justify-content-between",
                 ),
                 dbc.Container(
                     dbc.Row(
@@ -166,6 +243,61 @@ class MainFrame(Render):
             class_name="border rounded border-dark ms-0 me-0 mt-1",
             fluid=True,
         )
+
+    def _update_settings(
+        self,
+        n_save,
+        n_cancel,
+        n_open,
+        is_open,
+        version,
+        hosting,
+        model,
+        anthropic_key,
+        openai_key,
+    ):
+        if not ctx.triggered:
+            return is_open, ""  # return "" for dummy output
+
+        triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
+
+        if triggered_id == "settings-open-btn":
+            return True, ""
+
+        if triggered_id == "settings-cancel-btn":
+            return False, ""
+
+        if triggered_id == "settings-save-btn":
+            import os
+
+            if version:
+                os.environ["VERSION"] = version
+                docs_path = None
+                if version == "Anthropic":
+                    docs_path = "data/anthropic-docs-all.pkl"
+                elif version == "OpenAI":
+                    docs_path = "data/openai-docs-all.pkl"
+
+                if docs_path:
+                    try:
+                        self.reload_docs(Path(docs_path))
+                        os.environ["DOCS"] = docs_path
+                        self.chatbot.reload_utils(docs_path)
+                    except Exception as e:
+                        self._logger.error(f"Failed to reload docs: {e}")
+
+            if hosting:
+                os.environ["HOSTING_LOCATION"] = hosting
+            if model:
+                os.environ["MODEL"] = model
+            if anthropic_key:
+                os.environ["ANTHROPIC_API_KEY"] = anthropic_key
+            if openai_key:
+                os.environ["OPENAI_API_KEY"] = openai_key
+
+            return False, ""
+
+        return is_open, ""
 
     @Render.with_update(1, "before")
     def _query_ncbi_with_user_and_chatbot_data(

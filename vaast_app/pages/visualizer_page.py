@@ -14,11 +14,22 @@ ChatLogger.set_output_dir(Path(os.environ.get("CHAT_LOGS_DIR", "chat-logs")))
 
 tools = load_genetic_tools()
 bacdive_searcher = BacdiveAPISearcher.get_searcher()
+
+docs_env = os.environ.get("DOCS")
+if not docs_env:
+    version = os.environ.get("VERSION")
+    if version == "Anthropic":
+        docs_env = "data/anthropic-docs-all.pkl"
+    elif version == "OpenAI":
+        docs_env = "data/openai-docs-all.pkl"
+
+docs_path = Path(docs_env or "unable-to-locate-docs")
+
 layout = html.Div(
     [
         html.Link(rel="stylesheet"),
         html.Div(
-            MainFrame(get_app(), Path(os.environ.get("DOCS", "unable-to-locate-docs")), bacdive_searcher, tools)(),
+            MainFrame(get_app(), docs_path, bacdive_searcher, tools)(),
             className="d-none d-md-block g-0 mh-100",
         ),
         html.Div(["This page is not optimized for small screens"], className="d-block d-md-none g-0"),

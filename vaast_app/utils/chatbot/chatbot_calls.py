@@ -298,6 +298,7 @@ class ChatbotClient:
                     llm=self._model,
                     summary_llm=self._model,
                     agent=AgentSettings(agent_llm=self._model),
+                    prompts={"use_json": False},
                 )
             case "Anthropic":
                 settings = Settings(
@@ -305,6 +306,7 @@ class ChatbotClient:
                     summary_llm=self._model,
                     agent=AgentSettings(agent_llm=self._model),
                     embedding="st-multi-qa-MiniLM-L6-cos-v1",
+                    prompts={"use_json": False},
                 )
             case _:
                 raise ValueError("unreachable code")

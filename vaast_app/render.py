@@ -51,10 +51,12 @@ class Render(ABC):
                 self._genetic_tools: GeneticToolDBList = parent._genetic_tools
             elif isinstance(parent, Dash):
                 self._app = parent
-                if not docs.exists():
-                    raise ValueError("Docs file does not exist")
-                with open(docs, "rb") as pkl_ptr:
-                    self._docs = pickle.load(pkl_ptr)
+                if docs and docs.exists():
+                    with open(docs, "rb") as pkl_ptr:
+                        self._docs = pickle.load(pkl_ptr)
+                else:
+                    self._docs = None
+
                 if bacdive_searcher is None:
                     raise ValueError("Top-level 'Render' subclass must provide 'BacdiveAPISearcher' instance")
                 if genetic_tools is None:
@@ -129,3 +131,17 @@ class Render(ABC):
 
         :return: `Component` subclass
         """
+
+    def reload_docs(self, path: Path):
+        """
+        Reload docs from path
+        """
+        if issubclass(self._app.__class__, Render):
+            self._app.reload_docs(path)
+            self._docs = self._app.docs
+            return
+
+        if not path.exists():
+            raise ValueError("Docs file does not exist")
+        with open(path, "rb") as pkl_ptr:
+            self._docs = pickle.load(pkl_ptr)

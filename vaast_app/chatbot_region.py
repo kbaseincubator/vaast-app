@@ -1,6 +1,7 @@
 """Chatbot Region"""
 
 import json
+from pathlib import Path
 from typing import Literal
 
 import dash_bootstrap_components as dbc
@@ -229,6 +230,15 @@ class ChatbotRegion(Render):
             class_name="border",
             fluid=True,
         )
+
+    def reload_utils(self, docs: str | None = None):
+        """
+        Reload ChatbotUtils
+        """
+        if docs is not None:
+            self.reload_docs(Path(docs))
+
+        self._chatbot = ChatbotUtils(docs=self.docs)
 
     @staticmethod
     def _generate_token(_: int) -> TokenPayload:

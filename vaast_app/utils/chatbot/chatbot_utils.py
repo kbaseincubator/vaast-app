@@ -58,14 +58,22 @@ class ChatbotUtils:
 
     CHATBOT_ROLE = "system"
 
-    def __init__(self, docs: Docs):
+    def __init__(self, docs: Docs | None):
         """Initialize the ChatbotUtils."""
         self._logger = getLogger("chatbot-utils")
         self._stop_text = "STOP"
         self._docs = docs
+
+        version = os.environ.get("VERSION")
+        if not version:
+            if docs and "anthropic" in docs.name.lower():
+                version = "Anthropic"
+            else:
+                version = "OpenAI"
+
         self._chat_client = ChatbotClient(
             docs,
-            "Anthropic" if "anthropic" in docs.name else "OpenAI",
+            version,
             os.environ.get("HOSTING_LOCATION", "API"),
             os.environ.get("MODEL", "gpt-5.1"),
         )
@@ -94,6 +102,28 @@ class ChatbotUtils:
         if selection is None:
             selection = []
         self._logger.info("chat: [bacteria: %s\n%s\n]", ",".join(selection), user_input)
+
+        if self._docs is None:
+            response = {
+                "message": "Documentation not loaded. Please select a Version in the Settings menu.",
+                "sender": ChatbotUtils.CHATBOT_ROLE,
+                "rating": None,
+                "message_type": "text",
+                "selection": selection,
+            }
+            if modify_in_place:
+                chat_history.append(
+                    {
+                        "message": user_input,
+                        "sender": "user",
+                        "rating": None,
+                        "selection": selection,
+                        "message_type": "text",
+                    }
+                )
+                chat_history.append(response)
+            return response
+
         try:
             response = self._chat_client.process_chat(
                 ChatRequest(
