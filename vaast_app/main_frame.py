@@ -101,6 +101,7 @@ class MainFrame(Render):
         self.app.callback(
             Output("settings-modal", "is_open"),
             Output("tree-loading", "children", allow_duplicate=True),  # Dummy output
+            Output("settings-loading-target", "children"),  # Dummy loading target
             Input("settings-save-btn", "n_clicks"),
             Input("settings-cancel-btn", "n_clicks"),
             Input("settings-open-btn", "n_clicks"),
@@ -176,8 +177,16 @@ class MainFrame(Render):
                         ),
                         dbc.ModalFooter(
                             [
-                                dbc.Button("Save", id="settings-save-btn", color="primary"),
-                                dbc.Button("Cancel", id="settings-cancel-btn", className="ms-auto"),
+                                dbc.Stack(
+                                    [
+                                        dbc.Spinner(html.Div(id="settings-loading-target"), size="sm"),
+                                        dbc.Button("Save", id="settings-save-btn", color="primary"),
+                                        dbc.Button("Cancel", id="settings-cancel-btn", className="ms-auto"),
+                                    ],
+                                    direction="horizontal",
+                                    gap=2,
+                                    className="w-100",
+                                )
                             ]
                         ),
                     ],
@@ -257,34 +266,36 @@ class MainFrame(Render):
         openai_key,
     ):
         if not ctx.triggered:
-            return is_open, ""  # return "" for dummy output
+            return is_open, "", ""  # return "" for dummy output
 
         triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
 
         if triggered_id == "settings-open-btn":
-            return True, ""
+            return True, "", ""
 
         if triggered_id == "settings-cancel-btn":
-            return False, ""
+            return False, "", ""
 
         if triggered_id == "settings-save-btn":
             import os
 
             if version:
-                os.environ["VERSION"] = version
-                docs_path = None
-                if version == "Anthropic":
-                    docs_path = "data/anthropic-docs-all.pkl"
-                elif version == "OpenAI":
-                    docs_path = "data/openai-docs-all.pkl"
+                current_version = os.environ.get("VERSION")
+                if version != current_version:
+                    os.environ["VERSION"] = version
+                    docs_path = None
+                    if version == "Anthropic":
+                        docs_path = "data/anthropic-docs-all.pkl"
+                    elif version == "OpenAI":
+                        docs_path = "data/openai-docs-all.pkl"
 
-                if docs_path:
-                    try:
-                        self.reload_docs(Path(docs_path))
-                        os.environ["DOCS"] = docs_path
-                        self.chatbot.reload_utils(docs_path)
-                    except Exception as e:
-                        self._logger.error(f"Failed to reload docs: {e}")
+                    if docs_path:
+                        try:
+                            self.reload_docs(Path(docs_path))
+                            os.environ["DOCS"] = docs_path
+                            self.chatbot.reload_utils(docs_path)
+                        except Exception as e:
+                            self._logger.error(f"Failed to reload docs: {e}")
 
             if hosting:
                 os.environ["HOSTING_LOCATION"] = hosting
@@ -295,9 +306,9 @@ class MainFrame(Render):
             if openai_key:
                 os.environ["OPENAI_API_KEY"] = openai_key
 
-            return False, ""
+            return False, "", ""
 
-        return is_open, ""
+        return is_open, "", ""
 
     @Render.with_update(1, "before")
     def _query_ncbi_with_user_and_chatbot_data(
