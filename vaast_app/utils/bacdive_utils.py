@@ -450,9 +450,14 @@ class BacdiveAPISearcher:
         """
         assert bacdive_zj.exists()
         self._logger = logging.getLogger(__name__)
+
+        self._logger.info("Loading BacDive data from %s", bacdive_zj)
         with open(bacdive_zj, "r") as ptr:
             self._data: dict[str, _BacdiveJSONEntry] = json_unzip(json.load(ptr))
+
+        self._logger.info("Scanning BacDive parquet summary from %s", summary_parquet)
         self._summary_data = pl.scan_parquet(summary_parquet)
+
         self._genetic_tools = genetic_tools
         self._logger.info("db loaded")
 

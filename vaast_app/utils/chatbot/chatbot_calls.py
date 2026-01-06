@@ -28,6 +28,7 @@ logging.basicConfig(encoding="utf-8", level=logging.INFO)
 TaxID = NewType("TaxID", int)
 NonSpeciesEntry = NewType("NonSpeciesEntry", str)
 T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 class ChatMessage(BaseModel):
@@ -182,6 +183,8 @@ def _search_names_parquet(names: list[str]) -> list[dict[str, str]]:
 
     """
     names_pkt = pl.scan_parquet("data/ncbi-tax-names.parquet")
+    logger.info("Scanning parquet file: data/ncbi-tax-names.parquet for %s", names)
+
     ncbi_client = NCBITaxa()
     out = []
     for name in names:
@@ -344,16 +347,26 @@ class ChatbotClient:
             client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
         else:
             client = OpenAI(api_key=os.environ.get("CBORG_API_KEY", ""), base_url="https://api.cborg.lbl.gov")
-        response = client.chat.completions.parse(
-            model=self._model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=1.0,
-            response_format=return_type,
-            reasoning_effort="medium",
-        )
-        result = response.choices[0].message.parsed
+
+        logger.info("Sending request to OpenAI model: %s. Prompt length: %d", self._model, len(prompt))
+        try:
+            response = client.chat.completions.parse(
+                model=self._model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=1.0,
+                response_format=return_type,
+                reasoning_effort="medium",
+            )
+            result = response.choices[0].message.parsed
+        except Exception as e:
+            logger.exception("Error generating response from OpenAI")
+            raise e
+
         if not result:
+            logger.error("Failed to generate response from OpenAI (empty result)")
             raise RuntimeError("failed to generate response")
+
+        logger.info("Received successful response from OpenAI")
         return result
 
     def _generate_response_api_anthropic(self, prompt: str, return_type: type[T]) -> T:
@@ -368,16 +381,23 @@ class ChatbotClient:
             thinking={"type": "enabled", "budget_tokens": 2000},
             **(dict(base_url="https://api.cborg.lbl.gov") if self._host == "CBORG" else {}),
         ).bind_tools([return_type])
-        response = client.invoke([{"role": "user", "content": prompt}])
 
-        if not response.tool_calls or not response.tool_calls[0]["args"]:
-            raise ValueError("no tools (i.e., Pydantic types) were called")
-
+        logger.info("Sending request to Anthropic model: %s. Prompt length: %d", self._model, len(prompt))
         try:
-            return return_type.model_validate(response.tool_calls[0]["args"])
+            response = client.invoke([{"role": "user", "content": prompt}])
+
+            if not response.tool_calls or not response.tool_calls[0]["args"]:
+                raise ValueError("no tools (i.e., Pydantic types) were called")
+
+            result = return_type.model_validate(response.tool_calls[0]["args"])
+            logger.info("Received successful response from Anthropic")
+            return result
         except ValidationError as e:
-            print(e)
-            raise
+            logger.exception("Validation error in Anthropic response")
+            raise e
+        except Exception as e:
+            logger.exception("Error generating response from Anthropic")
+            raise e
 
     def process_chat(self, chat_request: ChatRequest) -> ChatRequest:
         """
