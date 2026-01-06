@@ -1,0 +1,7 @@
+.venv
+__pycache__
+data/*.pkl
+.cache
+chat-logs
+*.LOCK
+!poetry.lock

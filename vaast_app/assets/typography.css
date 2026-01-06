@@ -1,0 +1,29 @@
+html, body {
+    font-family: Oxygen, -apple-system, BlinkMacSystemFont, avenir next, avenir,
+    helvetica neue, helvetica, ubuntu, roboto, noto, segoe ui, arial,
+    sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+.btn-primary, .btn-primary:disabled {
+    background-color: #5E9732 !important;
+    border: #005F2C !important;
+    color: white;
+}
+
+.btn-primary:hover, .btn-primary:hover {
+    background-color: #005F2C !important;
+    border: #005F2C !important;
+    color: white;
+}
+
+.btn-outline-primary {
+    border-color: #5E9732 !important;
+    color: #5E9732 !important;
+}
+
+.phylotree-button-top:hover, .dropdown-toggle:hover {
+    background-color: #5E9732;
+    border-color: #0059AA;
+    color: white;
+}
