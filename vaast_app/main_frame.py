@@ -115,6 +115,15 @@ class MainFrame(Render):
         )(self._update_settings)
 
     def _set_layout(self) -> Component:
+        version = environ.get("VERSION")
+        settings_open = (
+            not version
+            or not environ.get("HOSTING_LOCATION")
+            or not environ.get("MODEL")
+            or (version == "Anthropic" and not environ.get("ANTHROPIC_API_KEY"))
+            or (version == "OpenAI" and not environ.get("OPENAI_API_KEY"))
+        )
+
         return dbc.Container(
             [
                 dcc.Store(id="validated-results", data={}),
@@ -191,7 +200,7 @@ class MainFrame(Render):
                         ),
                     ],
                     id="settings-modal",
-                    is_open=False,
+                    is_open=settings_open,
                     size="lg",
                 ),
                 ModalRegion(self)(),
