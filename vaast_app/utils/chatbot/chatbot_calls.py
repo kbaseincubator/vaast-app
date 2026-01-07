@@ -13,7 +13,7 @@ import logging
 import os
 from io import StringIO
 from textwrap import dedent
-from typing import Literal, NewType, TypeVar
+from typing import Literal, NewType, TypeVar, cast
 
 import polars as pl
 from ete3 import NCBITaxa
@@ -27,7 +27,7 @@ from pydantic.types import SecretStr
 logging.basicConfig(encoding="utf-8", level=logging.INFO)
 TaxID = NewType("TaxID", int)
 NonSpeciesEntry = NewType("NonSpeciesEntry", str)
-T = TypeVar("T")
+T = TypeVar("T", BaseModel, None)
 logger = logging.getLogger(__name__)
 
 
@@ -259,14 +259,35 @@ def _taxonomy_question(question_type: str, chat_request: ChatRequest, species: l
     raise ValueError("unreachable code")
 
 
+class InvalidOllamaEmbeddingsError(Exception):
+    """
+    Exception raised when invalid embeddings are specified for Ollama host.
+    """
+
+
+class InvalidHostingLocationError(Exception):
+    """
+    Exception raised when both use_cborg and use_ollama are True.
+    """
+
+
 class ChatbotClient:
-    # TODO: Add ollama support
+    """
+    Client for handling chatbot interactions and LLM integration.
+
+    This class manages the connection to LLM providers (OpenAI, Anthropic),
+    handles query processing, and routes requests to appropriate handlers
+    based on question type (taxonomy vs. genetic tools).
+    """
+
     def __init__(
         self,
         docs: Docs,
         version: Literal["OpenAI", "Anthropic"],
-        hosting_location: Literal["API", "CBORG"],
         model: str,
+        use_cborg: bool = False,
+        use_ollama: bool = False,
+        embeddings: str | None = None,
     ):
         """
         Initialize the ChatbotClient with the specified configuration.
@@ -274,53 +295,94 @@ class ChatbotClient:
         Args:
             docs: The paperqa Docs object for querying.
             version: The LLM provider version ('OpenAI' or 'Anthropic').
-            hosting_location: The hosting environment ('API' or 'CBORG').
             model: The name of the LLM model to use.
+            use_cborg: Whether to use CBORG as the hosting location.
+            use_ollama: Whether to use Ollama as the hosting location.
+            embeddings: The name of the LLM embeddings to use (required when using 'Ollama' host)
+
+        Raises:
+            InvalidHostingLocationError: If both use_cborg and use_ollama are True.
+            InvalidOllamaEmbeddingsError: If embeddings are not specified when use_ollama is True.
 
         """
         self._docs = docs
         self._version = version
-        self._host = hosting_location
+        self._use_cborg = use_cborg
+        self._use_ollama = use_ollama
         self._model = model
+        self._embeddings = embeddings
+        if self._use_cborg and self._use_ollama:
+            raise InvalidHostingLocationError("Both use_cborg and use_ollama are True")
+        if self._use_ollama and not self._embeddings:
+            raise InvalidOllamaEmbeddingsError("Embeddings must be specified when using Ollama host")
 
     def _get_settings(self, prompt: str | None = None) -> Settings:
-        # local_llm_config = dict(
-        #     model_list=[
-        #         dict(
-        #             model_name="ollama/gemma2-32k",
-        #             litellm_params=dict(
-        #                 model="ollama/gemma2-32k",
-        #                 api_base=_API_BASE,
-        #             ),
-        #         )
-        #     ]
-        # )
-        # settings = Settings(
-        #     llm="ollama/gemma2-32k",
-        #     llm_config=local_llm_config,
-        #     summary_llm="ollama/gemma2-32k",
-        #     summary_llm_config=local_llm_config,
-        #     embedding="ollama/snowflake-arctic-embed2",
-        #     agent=AgentSettings(agent_llm="ollama/gemma2-32k", agent_llm_config=local_llm_config),
-        # )
+        """
+        Configure and retrieve the settings for the LLM based on hosting location and provider.
+
+        Constructs the Settings object required by paperqa, configuring the LLM model,
+        hosting location (API or CBORG), and provider-specific parameters (OpenAI vs Anthropic).
+        It also sets up agent settings and search parameters.
+
+        Args:
+            prompt: Optional custom prompt to override the default QA prompt.
+
+        Returns:
+            Settings: A configured paperqa Settings object.
+
+        Raises:
+            ValueError: If the hosting location or version is invalid.
+
+        """
+        if self._use_ollama or self._use_cborg:
+            additional_data = {
+                "model_list": [
+                    {
+                        "model_name": self._model,
+                        "litellm_params": {
+                            "model_name": self._model,
+                            "model": self._model,
+                            **(
+                                {
+                                    "api_base": (
+                                        "http://127.0.0.1:11434" if self._use_ollama else "https://api.cborg.lbl.gov"
+                                    ),
+                                    "api_key": os.environ.get("CBORG_API_KEY", ""),
+                                }
+                            ),
+                        },
+                    }
+                ]
+            }
+            to_add = dict(llm_config=additional_data, summary_llm_config=additional_data)
+        else:
+            additional_data = None
+            to_add = {}
         match self._version:
             case "OpenAI":
-                settings = Settings(
-                    llm=self._model,
-                    summary_llm=self._model,
-                    agent=AgentSettings(agent_llm=self._model, timeout=1000),
-                    prompts={"use_json": False},
-                )
+                additional_setting = {}
             case "Anthropic":
-                settings = Settings(
-                    llm=self._model,
-                    summary_llm=self._model,
-                    agent=AgentSettings(agent_llm=self._model, timeout=1000),
-                    embedding="st-multi-qa-MiniLM-L6-cos-v1",
-                    prompts={"use_json": False},
-                )
+                additional_setting = {"embedding": "st-multi-qa-MiniLM-L6-cos-v1"}
+            case "Ollama":
+                raise NotImplementedError()
             case _:
                 raise ValueError("unreachable code")
+        settings = Settings(
+            llm=self._model,
+            summary_llm=self._model,
+            agent=AgentSettings(
+                agent_llm=self._model,
+                timeout=1000,
+                # pyrefly: ignore
+                **({"agent_llm_config": additional_data} if additional_data else {}),
+            ),
+            prompts={"use_json": False},
+            # pyrefly: ignore
+            **({"embedding": self._embeddings} if self._use_ollama else {}),
+            **additional_setting,
+            **to_add,
+        )
+
         settings.answer.answer_max_sources = 10
         settings.answer.evidence_k = 5
         if prompt:
@@ -351,7 +413,7 @@ class ChatbotClient:
                 raise ValueError("unreachable code")
 
     def _generate_response_api_openai(self, prompt: str, return_type: type[T]) -> T:
-        if self._host == "API":
+        if not self._use_cborg:
             client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
         else:
             client = OpenAI(api_key=os.environ.get("CBORG_API_KEY", ""), base_url="https://api.cborg.lbl.gov")
@@ -379,7 +441,7 @@ class ChatbotClient:
 
     def _generate_response_api_anthropic(self, prompt: str, return_type: type[T]) -> T:
         client = ChatAnthropic(
-            api_key=SecretStr(os.environ.get("ANTHROPIC_API_KEY" if self._host == "API" else "CBORG_API_KEY", "")),
+            api_key=SecretStr(os.environ.get("ANTHROPIC_API_KEY" if not self._use_cborg else "CBORG_API_KEY", "")),
             model_name=self._model,
             temperature=1,
             timeout=None,
@@ -387,7 +449,8 @@ class ChatbotClient:
             stop=None,
             max_tokens_to_sample=24000,
             thinking={"type": "enabled", "budget_tokens": 2000},
-            **(dict(base_url="https://api.cborg.lbl.gov") if self._host == "CBORG" else {}),
+            # pyrefly: ignore
+            **(dict(base_url="https://api.cborg.lbl.gov") if not self._use_cborg else {}),
         ).bind_tools([return_type])
 
         logger.info("Sending request to Anthropic model: %s. Prompt length: %d", self._model, len(prompt))
@@ -397,15 +460,18 @@ class ChatbotClient:
             if not response.tool_calls or not response.tool_calls[0]["args"]:
                 raise ValueError("no tools (i.e., Pydantic types) were called")
 
-            result = return_type.model_validate(response.tool_calls[0]["args"])
+            result = cast(BaseModel, return_type).model_validate(response.tool_calls[0]["args"])
             logger.info("Received successful response from Anthropic")
-            return result
+            return cast(T, result)
         except ValidationError as e:
             logger.exception("Validation error in Anthropic response")
             raise e
         except Exception as e:
             logger.exception("Error generating response from Anthropic")
             raise e
+
+    # TODO: Implement
+    def _generate_response_ollama(self, prompt: str, return_type: type[T]) -> T: ...
 
     def process_chat(self, chat_request: ChatRequest) -> ChatRequest:
         """
@@ -421,6 +487,7 @@ class ChatbotClient:
 
         """
 
+        # TODO: Error response for invalid requests should display in UI
         def _default_err_response(chat_request: ChatRequest, msg: str = "genetic tools and taxonomy") -> ChatRequest:
             return ChatRequest(
                 message=f"Hmmm, I currently only respond to questions about {msg}. Please ask a different question",
@@ -538,7 +605,7 @@ class ChatbotClient:
         logger.info("question is not relevant")
         return _default_err_response(chat_request)
 
-    def visualizer_data(self, chat_request: ChatRequest) -> list[ToolResponse]:
+    def visualizer_data(self, chat_request: ChatRequest) -> BacteriaSummary:
         """
         Extract visualizer data from a chat request.
 
@@ -550,7 +617,7 @@ class ChatbotClient:
             chat_request: The request containing chat history and user selection.
 
         Returns:
-            list[ToolResponse]: A list of extracted bacterial tool information.
+            BacteriaSummary: A list of extracted bacterial tool information.
 
         """
 

@@ -74,8 +74,10 @@ class ChatbotUtils:
         self._chat_client = ChatbotClient(
             docs,
             version,
-            os.environ.get("HOSTING_LOCATION", "API"),
             os.environ.get("MODEL", "gpt-5.1"),
+            use_cborg=bool(os.environ.get("USE_CBORG", False)),
+            use_ollama=bool(os.environ.get("USE_OLLAMA", False)),
+            embeddings=os.environ.get("EMBEDDINGS", None),
         )
 
     @staticmethod

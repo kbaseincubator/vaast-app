@@ -34,6 +34,7 @@ ruff = "^0.5.3"
 pyright = "^1.1.365"
 ruff-lsp = "^0.0.62"
 black = "^24.4.2"
+pyrefly = "^0.47.0"
 
 [tool.ruff]
 target-version = "py311"
@@ -60,6 +61,12 @@ ignore = [
 
 [tool.black]
 line-length = 120
+
+[tool.pyrefly]
+project-includes = [
+    "**/*.py*",
+    "**/*.ipynb",
+]
 
 [build-system]
 requires = [

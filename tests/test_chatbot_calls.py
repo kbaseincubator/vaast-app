@@ -21,7 +21,7 @@ def chatbot_client():
     return ChatbotClient(
         docs=docs,
         version="OpenAI",
-        hosting_location="API",
+        use_cborg=False,
         model="gpt-5.1",
     )
 

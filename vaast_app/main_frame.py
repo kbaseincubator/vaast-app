@@ -107,12 +107,33 @@ class MainFrame(Render):
             Input("settings-open-btn", "n_clicks"),
             State("settings-modal", "is_open"),
             State("settings-version", "value"),
-            State("settings-hosting", "value"),
+            State("settings-use-cborg", "value"),
+            State("settings-use-ollama", "value"),
             State("settings-model", "value"),
             State("settings-anthropic-key", "value"),
             State("settings-openai-key", "value"),
             prevent_initial_call=True,
         )(self._update_settings)
+
+        self.app.callback(
+            Output("settings-use-cborg", "value"),
+            Output("settings-use-ollama", "value"),
+            Input("settings-use-cborg", "value"),
+            Input("settings-use-ollama", "value"),
+            prevent_initial_call=True,
+        )(self._mutual_exclusion_cborg_ollama)
+
+    def _mutual_exclusion_cborg_ollama(self, use_cborg, use_ollama):
+        trigger = ctx.triggered_id
+        # Handle both boolean (from options) and string (from env) types
+        cborg_selected = str(use_cborg) == "True"
+        ollama_selected = str(use_ollama) == "True"
+
+        if trigger == "settings-use-cborg" and cborg_selected:
+            return True, False
+        if trigger == "settings-use-ollama" and ollama_selected:
+            return False, True
+        return use_cborg, use_ollama
 
     def _set_layout(self) -> Component:
         version = environ.get("VERSION")
@@ -156,15 +177,25 @@ class MainFrame(Render):
                                     placeholder="Select Version",
                                     value=environ.get("VERSION"),
                                 ),
-                                html.Label("Hosting Location"),
+                                html.Label("Use CBORG?"),
                                 dbc.Select(
-                                    id="settings-hosting",
+                                    id="settings-use-cborg",
                                     options=[
-                                        {"label": "API", "value": "API"},
-                                        {"label": "CBORG", "value": "CBORG"},
+                                        {"label": "No", "value": "False"},
+                                        {"label": "Yes", "value": "True"},
                                     ],
-                                    placeholder="Select Hosting Location",
-                                    value=environ.get("HOSTING_LOCATION"),
+                                    placeholder="Select CBORG",
+                                    value=environ.get("USE_CBORG"),
+                                ),
+                                html.Label("Use Ollama?"),
+                                dbc.Select(
+                                    id="settings-use-ollama",
+                                    options=[
+                                        {"label": "No", "value": "False"},
+                                        {"label": "Yes", "value": "True"},
+                                    ],
+                                    placeholder="Select Ollama",
+                                    value=environ.get("USE_OLLAMA"),
                                 ),
                                 html.Label("Model"),
                                 dbc.Input(id="settings-model", placeholder="Model Name", value=environ.get("MODEL")),
@@ -264,12 +295,13 @@ class MainFrame(Render):
 
     def _update_settings(
         self,
-        n_save,
-        n_cancel,
-        n_open,
+        _n_save,
+        _n_cancel,
+        _n_open,
         is_open,
         version,
-        hosting,
+        use_cborg,
+        use_ollama,
         model,
         anthropic_key,
         openai_key,
@@ -306,8 +338,10 @@ class MainFrame(Render):
                         except Exception as e:
                             self._logger.error(f"Failed to reload docs: {e}")
 
-            if hosting:
-                os.environ["HOSTING_LOCATION"] = hosting
+            if use_cborg:
+                os.environ["USE_CBORG"] = use_cborg
+            if use_ollama:
+                os.environ["USE_OLLAMA"] = use_ollama
             if model:
                 os.environ["MODEL"] = model
             if anthropic_key:
