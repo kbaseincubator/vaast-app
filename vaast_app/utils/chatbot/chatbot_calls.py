@@ -82,7 +82,7 @@ class QuestionType(BaseModel):
     Classifying the type of question asked by the user
     """
 
-    type: Literal["genetic tool", "taxonomy", "not relevant"]
+    type: Literal["taxonomy", "genetic engineering", "follow up question", "not relevant"]
 
 
 class TaxonomyQuestionType(BaseModel):
@@ -92,6 +92,14 @@ class TaxonomyQuestionType(BaseModel):
 
     type: Literal["nomenclature", "related species", "subspecies or strains", "other"]
     species: list[str]
+
+
+class ResponseType(BaseModel):
+    """
+    Helper class for a simple response to an existing question
+    """
+
+    response: str
 
 
 def _get_related_species(tax_names: list[str], species: list[str]) -> list[dict[str, str]]:
@@ -300,14 +308,14 @@ class ChatbotClient:
                 settings = Settings(
                     llm=self._model,
                     summary_llm=self._model,
-                    agent=AgentSettings(agent_llm=self._model),
+                    agent=AgentSettings(agent_llm=self._model, timeout=1000),
                     prompts={"use_json": False},
                 )
             case "Anthropic":
                 settings = Settings(
                     llm=self._model,
                     summary_llm=self._model,
-                    agent=AgentSettings(agent_llm=self._model),
+                    agent=AgentSettings(agent_llm=self._model, timeout=1000),
                     embedding="st-multi-qa-MiniLM-L6-cos-v1",
                     prompts={"use_json": False},
                 )
@@ -426,16 +434,24 @@ class ChatbotClient:
             response = self.generate_response(
                 prompt=(
                     f"A user is asking the following question: '{chat_request.message}'.\n"
-                    "Is this question related to biomanufacturing and genetic engineering (like antibiotics, phages, plasmids, CRISPR, cassettes, etc.), "
-                    "taxonomy (like alternative nomenclature, near relatives to a given organism, etc.), "
+                    + (
+                        f"in response to the following question: '{chat_request.chat_history[-1].message}'\n\n"
+                        if len(chat_request.chat_history) > 1
+                        else ""
+                    )
+                    + "Is this question related to taxonomy (like alternative nomenclature, near relatives to a given organism, etc.), "
+                    "genetic engineering (like plasmid use, phage infection, antibiotic selection, growth conditions, and other topics) "
+                    "a follow up question about the previous response, "
                     "or is it not relevant?"
                 ),
                 return_type=QuestionType,
             )
-        except BaseException:
+        except BaseException as err:
+            logger.error(err)
             return _default_err_response(chat_request)
 
-        if response.type == "genetic tool":
+        if response.type == "genetic engineering":
+            logger.info("question is likely about genetic engineering")
             chat_history = StringIO()
             for v in chat_request.chat_history:
                 chat_history.write(f"{v.sender}: bacteria: {','.join(v.selection)} message: {v.message}\n")
@@ -456,10 +472,10 @@ class ChatbotClient:
                 "Respond to their comment/question with specific sources AND the DOI of the manuscript. "
                 "You must provide responses that include actual tool entries. Be as comprehensive as possible.\n"
                 "If the user does not specify a bacterial organism in their question, assume that they are referring to the organisms in the first part of their conversation.\n"
-                "***********************************************"
-                "Here is the first part of the conversation:\n\n"
-                f"{chat_history.getvalue()}\n\n"
-                "***********************************************"
+                # "***********************************************"
+                # "Here is the first part of the conversation:\n\n"
+                # f"{chat_history.getvalue()}\n\n"
+                # "***********************************************"
                 "Use the context below if helpful. If you come across any names like 'E. coli', translate these to the correct "
                 "scientific name, like Escherichia coli. Always include the full organism name in every response you make to the user.\n"
                 "Context: {context}\n"
@@ -474,6 +490,7 @@ class ChatbotClient:
             )
 
         if response.type == "taxonomy":
+            logger.info("question is likely about taxonomy")
             try:
                 response = self.generate_response(
                     prompt=(
@@ -488,10 +505,37 @@ class ChatbotClient:
             except BaseException:
                 return _default_err_response(chat_request, "nomenclature changes, related organisms, and subspecies")
 
-            if response.type == "not relevant":
-                return _default_err_response(chat_request, "nomenclature changes, related organisms, and subspecies")
             return _taxonomy_question(response.type, chat_request, response.species)
 
+        if response.type == "follow up question":
+            logger.info("question is a follow up question")
+            chat_history = StringIO()
+            for v in chat_request.chat_history:
+                chat_history.write(f"{v.sender}: bacteria: {','.join(v.selection)} message: {v.message}\n\n")
+            chat_history.write(
+                f"user follow-up question: bacteria: {','.join(chat_request.selection)} message: {chat_request.message}\n\n"
+            )
+            prompt = (
+                "You are a synthetic biology researcher who is having a conversation with a colleague.\n"
+                "You will be provided with a conversation history and a follow-up question.\n"
+                "Respond to their follow-up question.\n"
+                "Use the context below if helpful."
+                "Context: {context}\n"
+                "Response: "
+            )
+            answer = self._docs.query(chat_request.message, settings=self._get_settings(prompt))
+            return ChatRequest(
+                message=answer.answer,
+                chat_history=chat_request.chat_history,
+                selection=chat_request.selection,
+                message_type="text",
+            )
+
+        if response.type == "not relevant":
+            logger.info("question is not relevant")
+            return _default_err_response(chat_request, "nomenclature changes, related organisms, and subspecies")
+
+        logger.info("question is not relevant")
         return _default_err_response(chat_request)
 
     def visualizer_data(self, chat_request: ChatRequest) -> list[ToolResponse]:
