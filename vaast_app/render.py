@@ -21,9 +21,6 @@ class Render(ABC):
 
     _V: "Render | None" = None
 
-    class Interface:
-        """Interface to publicly available subcomponent props"""
-
     def __new__(cls, *_args, **_kwargs):
         if cls._V is None:
             cls._V = super().__new__(cls)

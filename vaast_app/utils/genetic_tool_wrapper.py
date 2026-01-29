@@ -81,7 +81,7 @@ def load_genetic_tools() -> GeneticToolDBList:
                 tool_id_col="virus tax id",
                 tool_name="virus name",
                 select_cols=["virus lineage"],
-                file=Path("data/virus_host_db.parquet"),
+                file=Path("data") / "virus_host_db.parquet",
             ),
             GeneticToolDB(
                 database_name="Phage-Host DB",
@@ -89,7 +89,7 @@ def load_genetic_tools() -> GeneticToolDBList:
                 tool_id_col="virus tax id",
                 tool_name="virus name",
                 select_cols=["lineage", "host_lineage"],
-                file=Path("data/phd_db.parquet"),
+                file=Path("data") / "phd_db.parquet",
             ),
             GeneticToolDB(
                 database_name="PLSDB",
@@ -97,7 +97,7 @@ def load_genetic_tools() -> GeneticToolDBList:
                 tool_id_col="plasmid id",
                 tool_name="plasmid name",
                 select_cols=[],
-                file=Path("data/pls_db.parquet"),
+                file=Path("data") / "pls_db.parquet",
             ),
         ]
     )

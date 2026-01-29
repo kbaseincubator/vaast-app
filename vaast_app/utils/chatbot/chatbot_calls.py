@@ -18,6 +18,7 @@ from typing import Literal, NewType, TypeVar, cast
 import polars as pl
 from ete3 import NCBITaxa
 from langchain_anthropic import ChatAnthropic
+from ollama import chat
 from openai._client import OpenAI
 from paperqa import Docs, Settings
 from paperqa.settings import AgentSettings
@@ -450,7 +451,7 @@ class ChatbotClient:
             max_tokens_to_sample=24000,
             thinking={"type": "enabled", "budget_tokens": 2000},
             # pyrefly: ignore
-            **(dict(base_url="https://api.cborg.lbl.gov") if not self._use_cborg else {}),
+            **(dict(base_url="https://api.cborg.lbl.gov") if self._use_cborg else {}),
         ).bind_tools([return_type])
 
         logger.info("Sending request to Anthropic model: %s. Prompt length: %d", self._model, len(prompt))
@@ -470,8 +471,18 @@ class ChatbotClient:
             logger.exception("Error generating response from Anthropic")
             raise e
 
-    # TODO: Implement
-    def _generate_response_ollama(self, prompt: str, return_type: type[T]) -> T: ...
+    def _generate_response_ollama(self, prompt: str, return_type: type[T]) -> T:
+        assert issubclass(return_type, BaseModel)
+        # pyrefly: ignore
+        response = chat(
+            model=self._model,
+            messages=prompt,
+            format=return_type.model_json_schema(),
+            think="medium",
+        )
+
+        # Validate and parse the response against the expected output type
+        return cast(T, return_type.model_validate_json(cast(str, response.message.content)))
 
     def process_chat(self, chat_request: ChatRequest) -> ChatRequest:
         """

@@ -7,7 +7,7 @@ from typing import Literal, TypedDict
 
 from paperqa.docs import Docs
 
-from vaast_app.utils.chatbot.chatbot_calls import ChatbotClient, ChatRequest
+from vaast_app.utils.chatbot.chatbot_calls import ChatbotClient, ChatRequest, ToolResponse
 from vaast_app.utils.ncbi_taxa import get_ncbi_taxa
 from vaast_app.utils.type_utils import TaxName
 
@@ -106,7 +106,7 @@ class ChatbotUtils:
         self._logger.info("chat: [bacteria: %s\n%s\n]", ",".join(selection), user_input)
 
         if self._docs is None:
-            response = {
+            docs_response: ChatMessage = {
                 "message": "Documentation not loaded. Please select a Version in the Settings menu.",
                 "sender": ChatbotUtils.CHATBOT_ROLE,
                 "rating": None,
@@ -123,18 +123,18 @@ class ChatbotUtils:
                         "message_type": "text",
                     }
                 )
-                chat_history.append(response)
-            return response
+                chat_history.append(docs_response)
+            return docs_response
 
         try:
-            response = self._chat_client.process_chat(
+            response: ChatRequest = self._chat_client.process_chat(
                 ChatRequest(
                     message=user_input,
                     chat_history=chat_history[1:],
                     selection=selection,
                     message_type="text",
                 ),
-            ).model_dump()
+            )
         except JSONDecodeError:
             return {
                 "message": "Server error.",
@@ -143,10 +143,10 @@ class ChatbotUtils:
                 "message_type": "text",
                 "selection": selection,
             }
-        self._logger.info("LLM response: [\n%s\n]", response["message"])
-        response: ChatMessage = {
-            "message": str(response["message"]),
-            "message_type": response["message_type"],
+        self._logger.info("LLM response: [\n%s\n]", response.message)
+        out_message: ChatMessage = {
+            "message": str(response.message),
+            "message_type": response.message_type,
             "sender": ChatbotUtils.CHATBOT_ROLE,
             "rating": None,
             "selection": selection,
@@ -161,8 +161,8 @@ class ChatbotUtils:
                     "message_type": "text",
                 }
             )
-            chat_history.append(response)
-        return response
+            chat_history.append(out_message)
+        return out_message
 
     def chat(
         self,
@@ -184,7 +184,7 @@ class ChatbotUtils:
             user_input, chat_history, True, [v for v in set(tree_selection) | set(main_store["query"]) if v is not None]
         )
 
-    def get_visualization_data(self, chat_history: list[ChatMessage]) -> ChatbotPayload:
+    def get_visualization_data(self, chat_history: list[ChatMessage]) -> list[ToolResponse]:
         """
         View biological entities identified in the last message in the `chat_history`
 
@@ -206,25 +206,25 @@ class ChatbotUtils:
                 ).model_dump()
                 self._logger.info("LLM response: [\n%s\n]", message_parsed)
 
-                return {
-                    "results": [
-                        {
-                            key: (
-                                value
-                                if key != "species"
-                                else next(
-                                    iter(
-                                        ncbi_client.get_taxid_translator(
-                                            ncbi_client.get_name_translator([value])[value]
-                                        ).values()
-                                    )
+                # Tell me about plasmids that confer kanomycin resistance
+                return [
+                    {
+                        key: (
+                            value
+                            if key != "species"
+                            else next(
+                                iter(
+                                    ncbi_client.get_taxid_translator(
+                                        ncbi_client.get_name_translator([value])[value]
+                                    ).values()
                                 )
                             )
-                            for key, value in entry.items()
-                        }
-                        for entry in message_parsed
-                    ]
-                }
+                        )
+                        for key, value in entry.items()
+                    }
+                    for entry in message_parsed["bacteria"]
+                ]
+                # return message_parsed["bacteria"]
             except Exception as err:  # pylint: disable=broad-exception-caught
                 self._logger.error("Error on try %i: %s", i, str(err))
                 continue

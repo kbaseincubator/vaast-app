@@ -139,7 +139,6 @@ class MainFrame(Render):
         version = environ.get("VERSION")
         settings_open = (
             not version
-            or not environ.get("HOSTING_LOCATION")
             or not environ.get("MODEL")
             or (version == "Anthropic" and not environ.get("ANTHROPIC_API_KEY"))
             or (version == "OpenAI" and not environ.get("OPENAI_API_KEY"))
@@ -361,10 +360,11 @@ class MainFrame(Render):
     ) -> TreeResultData:
         # TODO: Determine source of this added undefined value
         query = [v for v in data["query"] if v is not None]
+        print(chatbot_provided)
         if chatbot_provided is not None:
             for result_dict in chatbot_provided:
                 for result in result_dict["results"]:
                     if result["species"] not in query:
                         query.append(result["species"])
-        tree_utils = TreeUtils(self.bacdive_searcher, Path("data/ncbi-tax-names.parquet"))
+        tree_utils = TreeUtils(self.bacdive_searcher, Path("data") / "ncbi-tax-names.parquet")
         return tree_utils.bacdive_based_search([q.strip(punctuation) for q in query]).to_data(chatbot_provided or None)

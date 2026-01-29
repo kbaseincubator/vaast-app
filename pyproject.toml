@@ -25,6 +25,7 @@ phylotree-dash = {file = "external_assets/phylotree_dash-0.0.5.tar.gz"}
 langchain_anthropic = "^1.3.1"
 openai = "^1.51.0"
 litellm = "1.53.3"
+ollama = "^0.6.1"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^7.4.0"
