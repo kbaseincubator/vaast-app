@@ -31,8 +31,8 @@ function addChatbotData(chatbotProvidedDataList) {
     return window.dash_clientside.no_update;
   }
   const out = [];
-  for (const chatbotProvidedData of chatbotProvidedDataList) {
-    const chatbotData = chatbotProvidedData.results;
+  console.log(chatbotProvidedDataList);
+  for (const chatbotData of chatbotProvidedDataList) {
     const label = {
         "type": "B",
         "namespace": "dash_html_components",
@@ -40,32 +40,30 @@ function addChatbotData(chatbotProvidedDataList) {
             "children": "Chatbot: "
         }
     };
-    for (const modelResponse of chatbotData) {
-      const childrenDiv = {
-        "type": "Div",
-        "namespace": "dash_html_components",
-        "props": {
-          "children": [
-              {"type": "Span", 
-              "namespace": "dash_html_components", 
-              "props": {"children": [label, modelResponse["species"]]}},
-              {"type": "Div",
-              "namespace": "dash_html_components",
-              "props": {"children": createToolTypes(modelResponse)}}
-            ]
-         }
-      };
-      out.push({
-        "type": "ListGroupItem", 
-        "namespace": "dash_bootstrap_components", 
-        "props": {
-          "children": childrenDiv, 
-          "action": true, 
-          "id": {"type": "chatbot-values", 
-          "index": out.length}
+    const childrenDiv = {
+      "type": "Div",
+      "namespace": "dash_html_components",
+      "props": {
+        "children": [
+            {"type": "Span", 
+            "namespace": "dash_html_components", 
+            "props": {"children": [label, chatbotData["species"]]}},
+            {"type": "Div",
+            "namespace": "dash_html_components",
+            "props": {"children": createToolTypes(chatbotData)}}
+          ]
         }
-      });
-    }
+    };
+    out.push({
+      "type": "ListGroupItem", 
+      "namespace": "dash_bootstrap_components", 
+      "props": {
+        "children": childrenDiv, 
+        "action": true, 
+        "id": {"type": "chatbot-values", 
+        "index": out.length}
+      }
+    });
   }
   return out;
 }

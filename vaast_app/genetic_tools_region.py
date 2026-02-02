@@ -137,9 +137,8 @@ class GeneticTools(Render):
         if chatbot_provided is None:
             return {}
         out = defaultdict(list)
-        for v_list in chatbot_provided or []:
-            for value in (v_list or {}).get("results", []):
-                out[value["species"]].extend(cast(ModelGeneticTool, value["tools"]))
+        for value in chatbot_provided or []:
+            out[value["species"]].extend(cast(ModelGeneticTool, value["tools"]))
         return out
 
     @Render.with_update(1, "after")

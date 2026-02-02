@@ -309,8 +309,9 @@ class ChatbotRegion(Render):
     def _visualize_chatbot_data(
         self, _: int, chat_history: ChatMessageList, existing_data: list[ChatbotPayload]
     ) -> tuple[list[ChatbotPayload], bool]:
+        print(existing_data)
         try:
-            return existing_data + [self._chatbot.get_visualization_data(chat_history)], False
+            return existing_data + self._chatbot.get_visualization_data(chat_history), False
         except RuntimeError:
             return existing_data, True
 

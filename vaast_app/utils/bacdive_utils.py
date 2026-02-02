@@ -555,11 +555,12 @@ class BacdiveAPISearcher:
                 out[mapping[species_id]]["traits"]["rings"].append(1)
             for unmatched in leaves_set.difference(tool_df[tool_db.host_id_col]):
                 out[mapping[unmatched]]["traits"]["rings"].append(0)
-        for chat in chatbot_provided:
-            for entry in chat.get("results", []):
-                if entry["species"] not in out.keys():
-                    out[entry["species"]] = {"traits": {"rings": [0, 0, 0]}}
-                out[entry["species"]]["traits"]["rings"].append(1)
+        for entry in chatbot_provided:
+            if entry.get("species") is None:
+                continue
+            if entry["species"] not in out.keys():
+                out[entry["species"]] = {"traits": {"rings": [0, 0, 0]}}
+            out[entry["species"]]["traits"]["rings"].append(1)
 
     def metadata(
         self, tree: PhyloNode, mapping: dict[int, str], chatbot_provided: list[ChatbotPayload] | None = None
