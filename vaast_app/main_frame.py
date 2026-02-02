@@ -248,21 +248,20 @@ class MainFrame(Render):
                                 ),
                             ],
                         ),
-                        dbc.Col(
-                            [
-                                dbc.Button("Settings", id="settings-open-btn", color="secondary", className="me-2"),
-                            ],
-                            width="auto",
-                            className="d-flex align-items-center",
-                        ),
                     ],
                     class_name="d-flex justify-content-between",
                 ),
                 dbc.Container(
                     dbc.Row(
-                        dbc.Col(
-                            dbc.Button("Select bacteria", id="btn-open-selection-modal"), className="ms-auto col-2"
-                        ),
+                        [
+                            dbc.Col(
+                                [
+                                    dbc.Button("Select bacteria", id="btn-open-selection-modal"),
+                                    dbc.Button("Settings", id="settings-open-btn", color="secondary", className="me-2"),
+                                ],
+                                className="ms-auto col-2",
+                            ),
+                        ],
                         className="d-flex align-items-right",
                     ),
                     fluid=True,
