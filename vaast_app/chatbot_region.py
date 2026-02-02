@@ -42,7 +42,7 @@ class ChatbotRegion(Render):
 
         self.app.callback(
             Output("chatbot-submit-button", "disabled", allow_duplicate=True),
-            Output("chatbot-visualize-button", "disabled", allow_duplicate=True),
+            # Output("chatbot-visualize-button", "disabled", allow_duplicate=True),
             Output("chatbot-reset-button", "disabled", allow_duplicate=True),
             Output("user-input", "value", allow_duplicate=True),
             Input("chatbot-submit-button", "n_clicks"),
@@ -51,7 +51,7 @@ class ChatbotRegion(Render):
 
         self.app.callback(
             Output(*self.Interface.conversation, allow_duplicate=True),
-            Output("chatbot-visualize-button", "disabled", allow_duplicate=True),
+            # Output("chatbot-visualize-button", "disabled", allow_duplicate=True),
             Output("user-input", "value", allow_duplicate=True),
             Output("last-selected", "data", allow_duplicate=True),
             Output("thumbs-up-btn", "active", allow_duplicate=True),
@@ -65,7 +65,7 @@ class ChatbotRegion(Render):
         self.app.callback(
             Output(*self.Interface.conversation, allow_duplicate=True),
             Output("chatbot-submit-button", "disabled", allow_duplicate=True),
-            Output("chatbot-visualize-button", "disabled", allow_duplicate=True),
+            # Output("chatbot-visualize-button", "disabled", allow_duplicate=True),
             Output("chatbot-reset-button", "disabled", allow_duplicate=True),
             Output("chatbot-thinking-loading", "children", allow_duplicate=True),
             Output("thumbs-up-btn", "active", allow_duplicate=True),
@@ -81,16 +81,16 @@ class ChatbotRegion(Render):
             # background=True,
         )(self._run_chatbot)
 
-        self.app.callback(
-            Output(*self.Interface.data, allow_duplicate=True),
-            Output("chat-error-modal", "is_open"),
-            Output("chatbot-thinking-loading", "children", allow_duplicate=True),
-            Input("chatbot-visualize-button", "n_clicks"),
-            State(*self.Interface.conversation),
-            State(*self.Interface.data),
-            prevent_initial_call=True,
-            # background=True,
-        )(self._visualize_chatbot_data)
+        # self.app.callback(
+        #     Output(*self.Interface.data, allow_duplicate=True),
+        #     Output("chat-error-modal", "is_open"),
+        #     Output("chatbot-thinking-loading", "children", allow_duplicate=True),
+        #     Input("chatbot-visualize-button", "n_clicks"),
+        #     State(*self.Interface.conversation),
+        #     State(*self.Interface.data),
+        #     prevent_initial_call=True,
+        #     # background=True,
+        # )(self._visualize_chatbot_data)
 
         self.app.callback(
             Output("chat-token", "data"), Input("chatbot-reset-button", "n_clicks"), prevent_initial_call=False
@@ -207,11 +207,11 @@ class ChatbotRegion(Render):
                                                 "Ask",
                                                 id="chatbot-submit-button",
                                             ),
-                                            dbc.Button(
-                                                "View on Tree",
-                                                id="chatbot-visualize-button",
-                                                disabled=True,
-                                            ),
+                                            # dbc.Button(
+                                            #     "View on Tree",
+                                            #     id="chatbot-visualize-button",
+                                            #     disabled=True,
+                                            # ),
                                             dbc.Button(
                                                 "Reset",
                                                 id="chatbot-reset-button",
@@ -296,20 +296,19 @@ class ChatbotRegion(Render):
         ]
 
     @staticmethod
-    def _disable_submit_and_clear_input(_: int) -> tuple[bool, bool, bool, None]:
-        return True, True, True, None
+    def _disable_submit_and_clear_input(_: int) -> tuple[bool, bool, None]:
+        return True, True, None
 
     def _reset_conversation(
         self, _: int, chat_token: TokenPayload, chat_history: ChatMessageList
-    ) -> tuple[ChatMessageList, bool, None, None, bool, bool]:
+    ) -> tuple[ChatMessageList, None, None, bool, bool]:
         self._chat_logger.log(chat_token, chat_history)
-        return self._chatbot.initialize_chat_history(), True, None, None, False, False
+        return self._chatbot.initialize_chat_history(), None, None, False, False
 
     @Render.with_update(1, "after")
     def _visualize_chatbot_data(
         self, _: int, chat_history: ChatMessageList, existing_data: list[ChatbotPayload]
     ) -> tuple[list[ChatbotPayload], bool]:
-        print(existing_data)
         try:
             return existing_data + self._chatbot.get_visualization_data(chat_history), False
         except RuntimeError:
@@ -325,14 +324,14 @@ class ChatbotRegion(Render):
         chat_token: TokenPayload,
         main_store: dict[str, list[str]],
         tree_selection: list[str],
-    ) -> tuple[ChatMessageList, bool, bool, bool, bool, bool]:
+    ) -> tuple[ChatMessageList, bool, bool, bool, bool]:
         if n_clicks == 0 and n_submit is None or (user_input is None or user_input == ""):
-            return chat_history, False, len(chat_history) == 1, False, False, False
+            return chat_history, len(chat_history) == 1, False, False, False
 
         self._chatbot.chat(user_input, chat_history, main_store, tree_selection)
         self._chat_logger.log(chat_token, chat_history)
 
-        return chat_history, False, False, False, False, False
+        return chat_history, False, False, False, False
 
     @staticmethod
     def _hide_rating_region(chat_history: ChatMessageList) -> dict[str, str]:

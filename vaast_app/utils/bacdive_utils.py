@@ -7,7 +7,7 @@ import json
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, fields
-from functools import cached_property
+from functools import cached_property, lru_cache
 from pathlib import Path
 from typing import Any, Collection, Iterable, Sequence
 
@@ -28,6 +28,45 @@ from vaast_app.utils.type_utils import (
     TaxID,
     TaxName,
 )
+
+
+@lru_cache
+def entries_in_vaast() -> tuple[set[str], set[int]]:
+    out_labels = set()
+    out_ids = set()
+    ncbi_client = get_ncbi_taxa()
+
+    with gzip.open(
+        Path("data")
+        / "gpt-4.1_gemini-flash-unlabeled-biorxiv-entity_extraction_with_annot_data_with_year_filtered.json.gz",
+        "rt",
+    ) as gzip_ptr:
+        for entry in json.load(gzip_ptr):
+            for entity in entry["entities"]:
+                if entity["type"] == "organism host":
+                    label = entity["label"].capitalize().replace('"', "").replace("'", "")
+                    v = ncbi_client.get_name_translator([label])
+                    if label in v:
+                        out_labels.add(label)
+                        out_ids.add(v[label][0])
+    with gzip.open(
+        Path("data")
+        / "gpt-4.1_gemini-flash-unlabeled-pmc-entity_extraction_with_annot_data_with_year_filtered.json.gz",
+        "rt",
+    ) as gzip_ptr:
+        for entry in json.load(gzip_ptr):
+            for entity in entry["entities"]:
+                if entity["type"] == "organism host":
+                    label = entity["label"].capitalize().replace('"', "").replace("'", "")
+                    v = ncbi_client.get_name_translator([label])
+                    if label in v:
+                        out_labels.add(label)
+                        out_ids.add(v[label][0])
+
+    return out_labels, out_ids
+
+
+vaast_labels, vaast_ids = entries_in_vaast()
 
 
 def _trim(value: str) -> str:
@@ -462,38 +501,6 @@ class BacdiveAPISearcher:
         self._genetic_tools = genetic_tools
         self._logger.info("db loaded")
 
-    @cached_property
-    def entries_in_vaast(self) -> set[str]:
-        out = set()
-        ncbi_client = get_ncbi_taxa()
-
-        with gzip.open(
-            Path("data")
-            / "gpt-4.1_gemini-flash-unlabeled-biorxiv-entity_extraction_with_annot_data_with_year_filtered.json.gz",
-            "rt",
-        ) as gzip_ptr:
-            for entry in json.load(gzip_ptr):
-                for entity in entry["entities"]:
-                    if entity["type"] == "organism host":
-                        label = entity["label"].capitalize().replace('"', "").replace("'", "")
-                        v = ncbi_client.get_name_translator([label])
-                        if label in v:
-                            out.add(label)
-        with gzip.open(
-            Path("data")
-            / "gpt-4.1_gemini-flash-unlabeled-pmc-entity_extraction_with_annot_data_with_year_filtered.json.gz",
-            "rt",
-        ) as gzip_ptr:
-            for entry in json.load(gzip_ptr):
-                for entity in entry["entities"]:
-                    if entity["type"] == "organism host":
-                        label = entity["label"].capitalize().replace('"', "").replace("'", "")
-                        v = ncbi_client.get_name_translator([label])
-                        if label in v:
-                            out.add(label)
-
-        return out
-
     @property
     def ranks(self) -> list[str]:
         """
@@ -582,7 +589,6 @@ class BacdiveAPISearcher:
         self, leaves: list[int], out: defaultdict, mapping: dict[int, str], chatbot_provided: list[ChatbotPayload]
     ) -> None:
         leaves_set = set(leaves)
-        vaast_db = self.entries_in_vaast
         for tool_db in self._genetic_tools:
             tool_df = tool_db.match(leaves).collect()
             for species_id in tool_df[tool_db.host_id_col].unique():
@@ -593,7 +599,7 @@ class BacdiveAPISearcher:
             leaf = mapping[leaf]
             if leaf not in out.keys():
                 out[leaf] = {"traits": {"rings": [0, 0, 0]}}
-            if leaf not in vaast_db:
+            if leaf not in vaast_labels:
                 out[leaf]["traits"]["rings"].append(0)
             else:
                 out[leaf]["traits"]["rings"].append(1)
