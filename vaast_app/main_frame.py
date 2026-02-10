@@ -16,6 +16,7 @@ from vaast_app.render import Render
 from vaast_app.strain_stats import StrainStats
 from vaast_app.utils.chatbot.chatbot_utils import ChatbotPayload
 from vaast_app.utils.tree_utils import TreeResultData, TreeUtils
+from vaast_app.tree_viz_region import TreeVizRegion
 
 
 class MainFrame(Render):
@@ -25,6 +26,7 @@ class MainFrame(Render):
         super().__init__(*args, **kwargs)
         self._logger = getLogger("main-frame")
         self.chatbot = ChatbotRegion(self)
+        self.tree_viz = TreeVizRegion(self)
 
         # Visualize chatbot data
         self.app.clientside_callback(
@@ -269,6 +271,12 @@ class MainFrame(Render):
                 ),
                 dbc.Container(
                     [self.chatbot()],
+                    class_name="g-0",
+                    fluid=True,
+                    className="mt-2",
+                ),
+                dbc.Container(
+                    [self.tree_viz()],
                     class_name="g-0",
                     fluid=True,
                     className="mt-2",
