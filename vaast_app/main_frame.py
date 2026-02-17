@@ -14,9 +14,9 @@ from vaast_app.genetic_tools_region import GeneticTools
 from vaast_app.modal import ModalRegion
 from vaast_app.render import Render
 from vaast_app.strain_stats import StrainStats
+from vaast_app.tree_viz_region import TreeVizRegion
 from vaast_app.utils.chatbot.chatbot_utils import ChatbotPayload
 from vaast_app.utils.tree_utils import TreeResultData, TreeUtils
-from vaast_app.tree_viz_region import TreeVizRegion
 
 
 class MainFrame(Render):

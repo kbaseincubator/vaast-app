@@ -1,8 +1,15 @@
+"""
+This module contains utilities for generating radial tree visualizations.
+It provides the TreeVizUtils class which handles tree loading, collapsing,
+layout calculation (polar to cartesian), and Plotly figure generation.
+"""
+
 import math
 from pathlib import Path
+from typing import cast
 
 import plotly.graph_objects as go
-from ete3 import Tree
+from ete3 import Tree, TreeNode
 
 # Rank order for determining hierarchy
 RANK_ORDER = {
@@ -21,6 +28,23 @@ RANK_ORDER = {
 RANK_LIST = sorted(RANK_ORDER.keys(), key=lambda k: RANK_ORDER[k])
 
 
+class NodeWithData(TreeNode):
+    """
+    Extended TreeNode class with additional attributes for visualization.
+    """
+
+    def __init__(self, *args, **kwargs):
+        """
+        Initialize the node with default attributes for visualization.
+        """
+        super().__init__(*args, **kwargs)
+        self.count = 0
+        self.rank = ""
+        self.sci_name = ""
+        self.theta = 0.0
+        self.r = 0.0
+
+
 class TreeVizUtils:
     """
     Utilities for generating radial tree visualizations with collapsing at specific ranks.
@@ -29,19 +53,24 @@ class TreeVizUtils:
     @staticmethod
     def get_next_ranks(current_root_rank: str) -> tuple[str, str, str]:
         """
-        Determine the next configuration based on the new root rank.
-        Rule:
+        Determine the next visualization configuration based on the new root rank.
+
+        Rules:
           - Color/Label Rank = Root Rank + 1
-          - Leaf Rank = Root Rank + 3  (approx "render down 2 levels" from color group?)
+          - Leaf Rank = Root Rank + 3
 
-          Initial (Root=None/Bacteria):
-             Root Rank ~ Superkingdom (0)
-             Color Rank = Phylum (1)
-             Leaf Rank = Order (3)
+        Process:
+          1. Initial View (Root=Bacteria/None):
+             - Root Rank: Superkingdom (0)
+             - Color Rank: Phylum (1)
+             - Leaf Rank: Order (3)
 
-          Zoom 1 (Root=Phylum):
-             Color Rank = Class (2)
-             Leaf Rank = Family (4)
+          2. Zoom Level 1 (Root=Phylum):
+             - Color Rank: Class (2)
+             - Leaf Rank: Family (4)
+
+        :param current_root_rank: The rank of the current root node (e.g., 'phylum').
+        :return: A tuple containing (current_root_rank, color_rank, leaf_rank).
         """
         # Ensure rank is valid key
         if current_root_rank not in RANK_ORDER:
@@ -65,12 +94,22 @@ class TreeVizUtils:
         return current_root_rank, color_rank, leaf_rank
 
     def __init__(self, nwk_path: Path):
+        """
+        Initialize the TreeVizUtils with the path to the Newick file.
+
+        :param nwk_path: Path to the .nwk file containing the tree.
+        """
         self.nwk_path = nwk_path
         self._full_tree: Tree | None = None
 
     def load_tree(self) -> Tree:
         """
-        Load the full tree from the newick file. Cached.
+        Load the full tree from the Newick file.
+
+        The tree is cached after the first load. The method attempts to load with format=3
+        (all internal nodes labeled) first, falling back to format=1 if necessary.
+
+        :return: A copy of the loaded ete3 Tree object.
         """
         if self._full_tree is None:
             # format=1 ensures internal node names are loaded, format=3 is more flexible
@@ -86,8 +125,11 @@ class TreeVizUtils:
         """
         Get a tree collapsed at the specified rank.
 
+        Nodes at the target rank become the new leaves, and their children are removed.
+        Descendant counts are added as features to the collapsed nodes.
+
         :param target_rank: The rank to collapse at (nodes at this rank become leaves).
-        :param root_tax_name: Optional name of the root node to zoom into.
+        :param root_tax_name: Optional name of the root node to zoom into. If provided, the tree is rooted at this node.
         :return: A collapsed ete3 Tree.
         """
         tree = self.load_tree()
@@ -95,11 +137,10 @@ class TreeVizUtils:
         # If a specific root is requested, find it and make it the new root
         if root_tax_name:
             # Search by name (scientific name or internal node name)
-            # The newick format from generate_full_collection_tree might use taxids as names or sci_names
-            # Let's try finding by name attribute
-            clean_name = root_tax_name.replace("_", " ")  # robust to URL encoding
+            # Use a robust search that handles spaces/underscores
+            clean_name = root_tax_name.replace("_", " ")
             target_node = None
-            for node in tree.traverse():
+            for node in cast(TreeNode, tree.traverse()):
                 if node.name == clean_name or getattr(node, "sci_name", "") == clean_name:
                     target_node = node
                     break
@@ -107,30 +148,24 @@ class TreeVizUtils:
             if target_node:
                 tree = target_node.detach()
             else:
-                # Fallback: keep full tree if not found (or raise error)
+                # Fallback: keep full tree if not found
                 pass
 
         # Target rank logic
         target_rank_level = RANK_ORDER.get(target_rank.lower())
         if target_rank_level is None:
-            return tree  # invalid rank, return full tree
+            return tree  # Invalid rank, return full tree
 
-        # Collapse logic
-        # We traverse effectively. If we hit a node at target_rank, we prune its children.
-        # Note: Pre-order traversal is safe for this if we modify children list in place?
-        # Actually proper way: iterate and mark nodes to keep/prune.
-
+        # Collapse logic: Prune children of nodes at the target rank
         nodes_to_collapse = []
-
         target_rank_lower = target_rank.lower()
 
-        for node in tree.traverse("preorder"):
+        for node in cast(TreeNode, tree.traverse("preorder")):
             node_rank = getattr(node, "rank", "")
-            # If node matches rank, we stop traversing down
+            # If node matches rank, mark for collapse and stop traversing down this branch
             if str(node_rank).lower() == target_rank_lower:
                 nodes_to_collapse.append(node)
-                # We don't verify if children are lower rank, we just assume hierarchy holds or tree is noisy
-                # For safety, we can check children's ranks? No, just collapse.
+                # No need to traverse deeper as children will be removed
 
         for node in nodes_to_collapse:
             # Calculate metadata before collapsing
@@ -143,7 +178,16 @@ class TreeVizUtils:
 
     @staticmethod
     def _generate_colors(n: int) -> list[str]:
-        """Generate distinct colors using Golden Angle approximation."""
+        """
+        Generate distinct colors using Golden Angle approximation.
+
+        This method produces visually distinct colors by spacing hues evenly around the color wheel
+        using the golden angle (approx. 137.5 degrees). It also varies saturation and lightness
+        slightly to add further distinction.
+
+        :param n: The number of colors to generate.
+        :return: A list of HSL color strings.
+        """
         colors = []
         for i in range(n):
             hue = (i * 137.508) % 360  # Golden angle
@@ -195,18 +239,16 @@ class TreeVizUtils:
 
         # Assign Angles and Radius to Internal Nodes
         # We need this for drawing edges AND for finding the center of the 'color_by_rank' sectors
-        for node in tree.traverse("postorder"):
+        for node in cast(TreeNode, tree.traverse("postorder")):
             if not node.is_leaf():
                 children = node.children
                 if children:
                     thetas = [child.theta for child in children]
                     node.add_feature("theta", sum(thetas) / len(thetas))
 
-                    # For sectors, we might want the range
-                    start_angles = [float(getattr(c, "start_angle", c.theta)) for c in children]
-                    end_angles = [float(getattr(c, "end_angle", c.theta)) for c in children]
-                    # This simple min/max works if we don't cross 0/360 boundary in a messy way
-                    # But since we increment form 0 to 360, it should be fine for contiguous groups
+                    # For sectors, calculate the angular range
+                    start_angles = [float(cast(float, getattr(c, "start_angle", c.theta))) for c in children]
+                    end_angles = [float(cast(float, getattr(c, "end_angle", c.theta))) for c in children]
                     node.add_feature("start_angle", min(start_angles))
                     node.add_feature("end_angle", max(end_angles))
 
@@ -233,21 +275,17 @@ class TreeVizUtils:
 
         if color_by_rank:
             # We need to find the specific ancestor for each leaf or traverse the tree to find nodes at rank
-            # Traversing the tree is safer to find the 'sectors' directly.
             rank_nodes = []
-            for node in tree.traverse():
+            for node in cast(TreeNode, tree.traverse()):
                 if getattr(node, "rank", "") == color_by_rank:
                     rank_nodes.append(node)
 
-            # If no nodes found at that rank (e.g. tree is cut below phylum), fall back to leaves?
-            # Or maybe the root is the rank?
             if not rank_nodes:
-                # Fallback: treat leaves as the groups
+                # Fallback: treat leaves as the groups if rank not found
                 rank_nodes = leaves
 
             # Now assign colors to these nodes
             palette = TreeVizUtils._generate_colors(len(rank_nodes))
-            # Create a map for quick lookup if needed, or just iterate these nodes to draw sectors
             for i, node in enumerate(rank_nodes):
                 color_groups.append((node, palette[i]))
 
@@ -267,16 +305,13 @@ class TreeVizUtils:
             theta_start = getattr(node, "start_angle", 0)
             theta_end = getattr(node, "end_angle", 0)
 
-            # Handle wrap-around or 0-width?
+            # Handle wrap-around or 0-width (shouldn't happen with valid tree logic)
             if theta_end <= theta_start:
-                # Should not happen for valid tree with width
-                # But if 360 reached, might be issue?
-                # floating point tolerance?
                 if abs(theta_end - theta_start) < 1e-6:
                     continue
 
             # Interpolate arc
-            # Resolution depends on width
+            # Resolution depends on width: ensure smoothness
             steps = max(2, int((theta_end - theta_start) / 1))
             wedge_x = [0]
             wedge_y = [0]
@@ -315,13 +350,41 @@ class TreeVizUtils:
         edge_x = []
         edge_y = []
 
-        for node in tree.traverse():
+        for node in cast(NodeWithData, tree.traverse()):
             if not node.is_root():
                 parent = node.up
-                px, py = polar_to_cart(parent.r, parent.theta)
-                nx, ny = polar_to_cart(node.r, node.theta)
-                edge_x.extend([px, nx, None])
-                edge_y.extend([py, ny, None])
+
+                # 1. Arc Segment: from Parent(theta) to self(theta) at Parent(r)
+                # This draws the "horizontal" bar of the fork (which is an arc in polar)
+                start_theta = parent.theta
+                end_theta = node.theta
+                radius = parent.r
+
+                # Interpolate arc
+                # Calculate delta and number of steps for smoothness
+                delta_theta = end_theta - start_theta
+
+                # Dynamic steps: at least 2 points, more for wider angles (approx 1 step per degree)
+                steps = max(2, int(abs(delta_theta) / 1.0))
+
+                for i in range(steps + 1):
+                    # Linear interpolation of angle
+                    t = start_theta + delta_theta * (i / steps)
+                    ax, ay = polar_to_cart(radius, t)
+                    edge_x.append(ax)
+                    edge_y.append(ay)
+
+                # 2. Radial Segment: from Parent(r) to self(r) at self(theta)
+                # This draws the "vertical" drop of the fork (radial line)
+                # The arc loop above ends at (radius, end_theta) = (parent.r, node.theta)
+                # We extend from there to (node.r, node.theta)
+                rx, ry = polar_to_cart(node.r, node.theta)
+                edge_x.append(rx)
+                edge_y.append(ry)
+
+                # Add None to break the line between edges
+                edge_x.append(None)
+                edge_y.append(None)
 
         fig.add_trace(
             go.Scatter(
@@ -341,11 +404,10 @@ class TreeVizUtils:
         node_customdata = []
         node_hover = []
 
-        for node in tree.traverse():
-            # Skip root if it's just a container? No, root might be actionable.
+        for node in cast(NodeWithData, tree.traverse()):
+            # Skip root's marker? Usually root is at (0,0), we render it too.
 
             # Cartesian coordinates
-            # Note: root might have r=0, theta=0
             if node.is_root():
                 nx, ny = 0, 0
             else:
@@ -378,39 +440,67 @@ class TreeVizUtils:
 
         # --- D. Labels (Perimeter) ---
         annotations = []
-        label_r = max_r_sector * 1.02
+        label_r = max_r_sector * 1.20
 
         # Decide which nodes to label
         nodes_to_label = []
         if label_rank:
             # Find nodes at this rank
-            for node in tree.traverse():
+            for node in cast(TreeNode, tree.traverse()):
                 if getattr(node, "rank", "") == label_rank:
                     nodes_to_label.append(node)
             if not nodes_to_label:
-                # If specifically requested rank not found, maybe don't label anything?
-                # Or fall back to leaves? Let's label nothing to avoid clutter if hierarchy doesn't match.
+                # If specifically requested rank not found (e.g. tree cut below it), do not label.
                 pass
         else:
             # Label leaves
             nodes_to_label = leaves
 
         for node in nodes_to_label:
-            theta = node.theta
-            lx, ly = polar_to_cart(label_r, theta)
-            node_name = getattr(node, "sci_name", node.name)
+            start_angle = getattr(node, "start_angle", 0.0)
+            end_angle = getattr(node, "end_angle", 0.0)
+            theta = (start_angle + end_angle) / 2
 
-            # Rotation logic
+            node_name = getattr(node, "sci_name", node.name)
+            lx, ly = polar_to_cart(label_r + 0.02 * len(node_name), theta)
+
+            # Rotation logic (Tangential)
+            # We want the text to be perpendicular to the radius.
             norm_theta = theta % 360
 
-            if 90 < norm_theta < 270:
-                # Left Side
+            # Determine angle to keep text upright and readable
+            if 0 <= norm_theta < 180:
+                # Right Side / Top / Bottom-Right
+                # Text runs "Down" at 3 o'clock? Or "Up"?
+                # Usually text runs "Up" (-90 to 90).
                 angle = 180 - norm_theta
-                xanchor = "right"
+                # Flip if needed for left-to-right reading
+                if angle < -90:
+                    angle += 180
+
+                # Special cases near horizontal?
+                # At 0 (Right), -90 (Down).
+                # At 90 (Top), 0 (Horizontal).
+                # At 180 (Left), 90 (Up).
+                xanchor = "center"  # Tangential implies centered
             else:
-                # Right Side
-                angle = -norm_theta
-                xanchor = "left"
+                # Left Side / Bottom-Left
+                angle = 180 - norm_theta
+                # Flip 180 to be readable
+                angle -= 180
+                xanchor = "center"
+
+            # Correction for specific quadrants to ensure consistency
+            if angle > 90:
+                angle -= 180
+            elif angle < -90:
+                angle += 180
+
+            if -90 <= norm_theta <= 0 or norm_theta >= 270:
+                angle -= 180
+
+            # Anchor tuning: Tangential text flows along the perimeter. Center is safest.
+            # xanchor variable is already set above.
 
             annotations.append(
                 dict(
@@ -433,7 +523,10 @@ class TreeVizUtils:
         label_hover = []
 
         for node in nodes_to_label:
-            theta = node.theta
+            start_angle = getattr(node, "start_angle", 0.0)
+            end_angle = getattr(node, "end_angle", 0.0)
+            theta = (start_angle + end_angle) / 2
+
             lx, ly = polar_to_cart(label_r, theta)
 
             node_name = getattr(node, "sci_name", node.name)
@@ -484,13 +577,13 @@ class TreeVizUtils:
         new_root_name = current_root_data["name"]
         new_root_rank = current_root_data["rank"]
 
-        # logic
+        # Handle callbacks
         if triggered_id == "reset-btn":
             new_root_name = "Bacteria"
             new_root_rank = "superkingdom"
 
         elif triggered_id == "tree-graph" and click_data:
-            # check what was clicked
+            # Handle user click on the tree
             point = click_data["points"][0]
             # customdata is [node_name, rank, count]
             custom_data = point.get("customdata")

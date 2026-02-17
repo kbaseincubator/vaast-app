@@ -1,4 +1,14 @@
+"""
+Script to run a Dash application for exploring the taxonomy tree visualization.
+
+This script initializes a Dash app that displays an interactive phylogenetic tree.
+It handles user interactions such as clicking on nodes to expand/collapse branches
+and resetting the view. It relies on the `TreeVizUtils` class for tree
+processing and visualization logic.
+"""
+
 from pathlib import Path
+from typing import cast
 
 from dash import Dash, Input, Output, State, ctx, dcc, html
 
@@ -36,10 +46,9 @@ def _main() -> None:
         State("current-root", "data"),
     )
     def update_tree(click_data, reset_clicks, current_root_data):
-        triggered_id = ctx.triggered_id if ctx.triggered else "initial"
-        print(triggered_id)
+        triggered_id = ctx.triggered_id or "initial"
 
-        return tree_viz_utils.process_interaction(triggered_id, click_data, current_root_data)
+        return tree_viz_utils.process_interaction(cast(str, triggered_id), click_data, current_root_data)
 
     app.run(debug=True)
 
