@@ -1,7 +1,9 @@
 from pathlib import Path
+
 import dash_bootstrap_components as dbc
-from dash import dcc, html, Input, Output, State, callback, ctx, no_update
+from dash import Input, Output, State, ctx, dcc, html, no_update
 from dash.development.base_component import Component
+
 from vaast_app.render import Render
 from vaast_app.utils.tree_viz_utils import TreeVizUtils
 
@@ -78,9 +80,6 @@ class TreeVizRegion(Render):
 
             # customdata = [name, rank, count]
             name_line, rank_line, _ = customdata
-
-            current_rank = current_store.get("rank", "class")
-
             # Determine next rank
             try:
                 current_rank_idx = RANK_HIERARCHY.index(rank_line.lower())
