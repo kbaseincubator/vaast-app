@@ -569,18 +569,27 @@ class TreeVizUtils:
         return fig
 
     def process_interaction(
-        self, triggered_id: str, click_data: dict | None, current_root_data: dict
+        self, triggered_id: str, click_data: dict | None, current_store_data: dict
     ) -> tuple[go.Figure, dict, str]:
         """
-        Process user interaction (reset or click) and generate the updated tree figure.
+        Process user interaction (reset, back, or click) and generate the updated tree figure.
         """
-        new_root_name = current_root_data["name"]
-        new_root_rank = current_root_data["rank"]
+        # Extract current state
+        new_root_name = current_store_data.get("name", "Bacteria")
+        new_root_rank = current_store_data.get("rank", "superkingdom")
+        history = current_store_data.get("history", [])
 
         # Handle callbacks
         if triggered_id == "reset-btn":
             new_root_name = "Bacteria"
             new_root_rank = "superkingdom"
+            history = []
+
+        elif triggered_id == "back-btn":
+            if history:
+                previous_state = history.pop()
+                new_root_name = previous_state["name"]
+                new_root_rank = previous_state["rank"]
 
         elif triggered_id == "tree-graph" and click_data:
             # Handle user click on the tree
@@ -603,6 +612,8 @@ class TreeVizUtils:
                 max_rank_idx = len(RANK_LIST) - 1
 
                 if clicked_rank_idx < max_rank_idx:
+                    # Push current state to history before changing
+                    history.append({"name": new_root_name, "rank": new_root_rank})
                     new_root_name = clicked_name
                     new_root_rank = clicked_rank_lower
                 else:
@@ -619,7 +630,6 @@ class TreeVizUtils:
         try:
             tree = self.get_collapsed_tree(leaf_rank, root_tax_name=new_root_name)
             fig = self.generate_figure(tree, color_by_rank=color_rank, label_rank=color_rank)
-            fig.update_layout(title=f"Root: {new_root_name or 'Collection'} | Showing: {leaf_rank}")
         except Exception as e:
             # Fallback if something goes wrong (e.g. node not found)
             print(f"Error generating tree: {e}")
@@ -627,4 +637,4 @@ class TreeVizUtils:
 
         breadcrumbs = f"Current Root: {new_root_name or 'All'} ({new_root_rank})"
 
-        return fig, {"name": new_root_name, "rank": new_root_rank}, breadcrumbs
+        return fig, {"name": new_root_name, "rank": new_root_rank, "history": history}, breadcrumbs
