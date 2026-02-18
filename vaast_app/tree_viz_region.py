@@ -82,7 +82,10 @@ class TreeVizRegion(Render):
                     id="loading-tree-graph",
                     type="default",
                     children=dcc.Graph(
-                        id="tree-viz-graph", figure=initial_fig, config={"displayModeBar": True, "scrollZoom": True}
+                        id="tree-viz-graph",
+                        figure=initial_fig,
+                        config={"displayModeBar": True, "scrollZoom": True},
+                        className="vh-100",
                     ),
                 ),
             ],
